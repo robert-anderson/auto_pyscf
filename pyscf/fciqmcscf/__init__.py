@@ -13,4 +13,5 @@
 # limitations under the License.
 
 from pyscf.fciqmcscf import fciqmc
+#from pyscf.fciqmcscf import kernels
 from pyscf.fciqmcscf.fciqmc import FCIQMCCI

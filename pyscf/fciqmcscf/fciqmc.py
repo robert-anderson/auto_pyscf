@@ -74,6 +74,8 @@ IRREP_MAP = {'D2h': (1,         # Ag
 class FCIQMCCI(object):
     def __init__(self, mol):
 
+        self.mode = 'normal'
+
         self.mol = mol
         self.verbose = mol.verbose
         self.stdout = mol.stdout
@@ -156,20 +158,28 @@ class FCIQMCCI(object):
             nelecb = nelec - neleca
         else:
             neleca, nelecb = nelec
+        if self.mode in ('dump and die', 'normal'):
+            write_integrals_file(h1e, eri, norb, neleca, nelecb, self, ecore)
+        if self.mode == 'dump and die':
+            print('CAS integrals dumped to disk. Quitting PySCF...')
+            sys.exit(0)
 
-        write_integrals_file(h1e, eri, norb, neleca, nelecb, self, ecore)
-        if self.generate_neci_input:
-            write_fciqmc_config_file(self, neleca, nelecb, fci_restart)
-        if self.verbose >= logger.DEBUG1:
-            in_file = self.configFile
-            logger.debug1(self, 'FCIQMC Input file')
-            logger.debug1(self, open(in_file, 'r').read())
-        execute_fciqmc(self)
-        if self.verbose >= logger.DEBUG1:
-            out_file = self.outputFileCurrent
-            with open(out_file) as f:
-                logger.debug1(self, f.read())
+        if self.mode == 'normal':
+            if self.generate_neci_input:
+                write_fciqmc_config_file(self, neleca, nelecb, fci_restart)
+
+            if self.verbose >= logger.DEBUG1:
+                in_file = self.configFile
+                logger.debug1(self, 'FCIQMC Input file')
+                logger.debug1(self, open(in_file, 'r').read())
+            execute_fciqmc(self)
+            if self.verbose >= logger.DEBUG1:
+                out_file = self.outputFileCurrent
+                with open(out_file) as f:
+                    logger.debug1(self, f.read())
+
         rdm_energy = read_energy(self)
+        print('NECI 2RDM energy', rdm_energy)
 
         return rdm_energy, None
 
@@ -1058,4 +1068,5 @@ if __name__ == '__main__':
 
     print('FCIQMCCI  = %.15g CASCI  = %.15g' % (emc_0, emc_0ref))
     print('FCIQMCSCF = %.15g CASSCF = %.15g' % (emc_1, emc_1ref))
+
 
