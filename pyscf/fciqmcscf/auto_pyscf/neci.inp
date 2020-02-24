@@ -1,0 +1,46 @@
+title
+system read noorder
+electrons 8
+symignoreenergies
+freeformat
+sym 0 0 0 0
+spin-restrict 2
+nonuniformrandexcits 4ind-weighted
+nobrillouintheorem
+endsys
+calc
+
+semi-stochastic
+fci-core
+
+
+methods
+method vertex fcimc
+endmethods
+totalwalkers 100
+memoryfacpart 10.0
+memoryfacspawn 20.0
+seed 14
+startsinglepart 100
+shiftdamp 0.05
+truncinitiator
+addtoinitiator 3.0
+allrealcoeff
+realspawncutoff 0.4
+jump-shift
+stepsshift 5
+maxwalkerbloom 3
+load-balance-blocks off
+nmcyc 10
+endcalc
+integral
+freeze 0 0
+endint
+
+logging
+calcrdmonfly 3 1 2
+write-spin-free-rdm
+explicitallrdm
+binarypops
+endlog
+end
