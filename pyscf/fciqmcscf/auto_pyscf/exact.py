@@ -1,11 +1,17 @@
+import sys
+sys.path.insert(0, '.')
 import definition as defn
 from pyscf import scf, mcscf
-from pyscf.fciqmcscf import kernels
-from pyscf.fciqmcscf import FCIQMCCI
 from glob import glob
 import numpy as np
 
-mycas = mcscf.CASSCF(defn.mol, defn.cas, defn.nelecas)
+ncasorb = defn.cas if not isinstance(defn.cas, tuple) else len(defn.cas)
+
 hf = scf.RHF(defn.mol)
 hf.kernel()
-mycas.kernel(hf.mo_coeff)
+mycas = mcscf.CASSCF(hf, ncasorb, defn.nelecas)
+if isinstance(defn.cas, tuple):
+    mo_coeff = mycas.sort_mo(defn.cas)
+else:
+    mo_coeff = hf.mo_coeff
+mycas.kernel(mo_coeff)
