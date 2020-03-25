@@ -30,6 +30,7 @@ from pyscf import fci
 from pyscf.mcscf import mc_ao2mo
 from pyscf import ao2mo
 from pyscf.ao2mo import _ao2mo
+from pyscf import fciqmcscf
 
 libmc = lib.load_library('libmcscf')
 
@@ -620,6 +621,7 @@ class NEVPT(lib.StreamObject):
 
     def canonicalize(self, mo_coeff=None, ci=None, eris=None, sort=False,
                       cas_natorb=False, casdm1=None, verbose=logger.NOTE):
+        print("Canonicalizing...")
         return self._mc.canonicalize(mo_coeff, ci, eris, sort, cas_natorb, casdm1, verbose)
 
     def get_veff(self, mol=None, dm=None, hermi=1):
@@ -675,6 +677,86 @@ class NEVPT(lib.StreamObject):
         self.compressed_mps = True
         return self
 
+
+    def fciqmc(self, dirname='.'):
+        if isinstance(self.verbose, logger.Logger):
+            log = self.verbose
+        else:
+            log = logger.Logger(self.stdout, self.verbose)
+        time0 = (time.clock(), time.time())
+
+        print('Reading FCIQMC 1, 2, 3 RDMs...')
+        dm1, dm2, dm3 = fciqmcscf.stochastic_mrpt.read_rdms_fciqmc(self.ncas, self.nelecas, dirname=dirname)
+        dms = {'1':dm1, '2':dm2, '3':dm3}
+        print('FCIQMC 1, 2, 3 RDMs read successfully.')
+        if (not self.canonicalized):
+            self.mo_coeff,_, self.mo_energy = self.canonicalize(self.mo_coeff,ci=None,verbose=self.verbose,casdm1=dm1)
+
+        ncore = self.ncore
+        ncas = self.ncas
+        nocc = ncore + ncas
+        assert dm1.shape[0]==ncas
+
+        time1 = log.timer('3pdm, 4pdm', *time0)
+        eris = _ERIS(self, self.mo_coeff)
+        time1 = log.timer('integral transformation', *time1)
+
+        aaaa = eris['ppaa'][ncore:nocc,ncore:nocc].copy()
+
+        try:
+            print('Reading FCIQMC NEVPT2 intermediate...')
+            f3ac, f3ca = fciqmcscf.stochastic_mrpt.full_nevpt2_intermediates_fciqmc(dm1, dm2, dm3, self.ncas, aaaa.transpose(0,2,1,3), dirname=dirname)
+            print('FCIQMC NEVPT2 intermediates read successfully.')
+        except IOError:
+            print ('FCIQMC NEVPT2 intermediate not found, reading 4RDM')
+            dm4 = fciqmcscf.stochastic_mrpt.read_neci_pdm_mrpt('spinfree_FourRDM.1', self.ncas)
+            print ('Computing low-rank part of FCIQMC NEVPT2 intermediate...')
+            f3ac, f3ca = fciqmcscf.stochastic_mrpt.calc_lower_rank_part_of_intermediates(dms['1'], dms['2'], dms['3'], aaaa.transpose(0,2,1,3))
+            print ('Adding rank-4 part of the NEVPT2 intermediate...')
+            f3ac += einsum('pqra,kibjqcpr->ijkabc', aaaa.transpose(0,2,1,3), dm4).transpose(2, 0, 4, 1, 3, 5)
+            f3ca += einsum('rcpq,kibjaqrp->ijkabc', aaaa.transpose(0,2,1,3), dm4).transpose(2, 0, 4, 1, 3, 5)
+            print ('complete')
+            # the dms are all normal ordered, so switch to product-of-single-excitation ordering
+        print ('Reordering FCIQMC RDMs from NORD to POSE...')
+        fciqmcscf.stochastic_mrpt.unreorder_dm123(dms['1'], dms['2'], dms['3'], inplace=True)
+        print ('complete')
+        dms['f3ca'] = f3ca
+        dms['f3ac'] = f3ac
+
+        time1 = log.timer('eri-4pdm contraction', *time1)
+
+        norm_Sr   , e_Sr    = Sr(self, None, dms, eris)
+        logger.note(self, "Sr    (-1)',   E = %.14f",  e_Sr  )
+        time1 = log.timer("space Sr (-1)'", *time1)
+        norm_Si   , e_Si    = Si(self, None, dms, eris)
+        logger.note(self, "Si    (+1)',   E = %.14f",  e_Si  )
+
+        time1 = log.timer("space Si (+1)'", *time1)
+        norm_Sijrs, e_Sijrs = Sijrs(self, eris)
+        logger.note(self, "Sijrs (0)  ,   E = %.14f", e_Sijrs)
+        time1 = log.timer('space Sijrs (0)', *time1)
+        norm_Sijr , e_Sijr  = Sijr(self, dms, eris)
+        logger.note(self, "Sijr  (+1) ,   E = %.14f",  e_Sijr)
+        time1 = log.timer('space Sijr (+1)', *time1)
+        norm_Srsi , e_Srsi  = Srsi(self, dms, eris)
+        logger.note(self, "Srsi  (-1) ,   E = %.14f",  e_Srsi)
+        time1 = log.timer('space Srsi (-1)', *time1)
+        norm_Srs  , e_Srs   = Srs(self, dms, eris)
+        logger.note(self, "Srs   (-2) ,   E = %.14f",  e_Srs )
+        time1 = log.timer('space Srs (-2)', *time1)
+        norm_Sij  , e_Sij   = Sij(self, dms, eris)
+        logger.note(self, "Sij   (+2) ,   E = %.14f",  e_Sij )
+        time1 = log.timer('space Sij (+2)', *time1)
+        norm_Sir  , e_Sir   = Sir(self, dms, eris)
+        logger.note(self, "Sir   (0)' ,   E = %.14f",  e_Sir )
+        time1 = log.timer("space Sir (0)'", *time1)
+
+        nevpt_e  = e_Sr + e_Si + e_Sijrs + e_Sijr + e_Srsi + e_Srs + e_Sij + e_Sir
+        logger.note(self, "Nevpt2 Energy = %.15f", nevpt_e)
+        log.timer('SC-NEVPT2', *time0)
+
+        self.e_corr = nevpt_e
+        return nevpt_e
 
 
     def kernel(self):

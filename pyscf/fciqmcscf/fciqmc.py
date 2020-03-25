@@ -526,6 +526,30 @@ def write_integrals_file(h1e, eri, norb, neleca, nelecb, fciqmcci, ecore=0):
                                        orbsym=orbsym, tol=1e-10)
 
 
+def cas_fcidump(mc, fname='FCIDUMP'):
+    assert mc.mo_coeff is not None
+    assert mc.ncas is not None
+    assert mc.nelecas is not None
+    eri_cas = mc.get_h2eff(mc.mo_coeff)
+    h1eff, energy_core = mc.get_h1eff(mc.mo_coeff)
+    assert h1eff.shape[0] == mc.ncas
+    if isinstance(mc.nelecas, (int, numpy.integer)):
+        neleca = mc.nelecas//2 + mc.nelecas%2
+        nelecb = mc.nelecas - mc.neleca
+    else: neleca, nelecb = mc.nelecas
+
+    # Ensure 4-fold symmetry.
+    eri_cas = pyscf.ao2mo.restore(4, eri_cas, mc.ncas)
+
+    orbsym = []
+    if mc.mol.symmetry:
+        orbsym = mc.mo_coeff.orbsym[mc.ncore : mc.ncore + mc.ncas]
+        orbsym = [IRREP_MAP[mc.mol.groupname][i] for i in orbsym]
+
+    pyscf.tools.fcidump.from_integrals(fname, h1eff, eri_cas, mc.ncas, neleca+nelecb, 
+            energy_core, ms=abs(neleca-nelecb), orbsym=orbsym, tol=1e-10)
+
+
 def execute_fciqmc(fciqmcci):
     '''Call the external FCIQMC program.
 
