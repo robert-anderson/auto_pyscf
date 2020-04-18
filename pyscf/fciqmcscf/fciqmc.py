@@ -538,6 +538,8 @@ def cas_fcidump(mc, fname='FCIDUMP'):
         nelecb = mc.nelecas - mc.neleca
     else: neleca, nelecb = mc.nelecas
 
+    if mc.mol.symmetry: 
+        mc.mo_coeff = pyscf.mcscf.casci_symm.label_symmetry_(mc, mc.mo_coeff)
     # Ensure 4-fold symmetry.
     eri_cas = pyscf.ao2mo.restore(4, eri_cas, mc.ncas)
 

@@ -219,6 +219,26 @@ def full_nevpt2_intermediates_fciqmc(no_dm1, no_dm2, no_dm3, ncas, h2e, dirname=
 	f3ca+=neci_nevpt2_intermediate.transpose(0, 4, 3, 2, 5, 1)
 	return f3ac, f3ca
 
+def mo_coeff_path(dirname='.'):
+    path = '{}/mo_coeff.npy'.format(dirname)
+    if os.path.exists(path):
+        return path
+    path = '{}/mo_coeff.pkl'.format(dirname)
+    if os.path.exists(path):
+        return path
+    assert 0, "File containing MO coefficients not found"
+
+def read_mo_coeff(dirname='.'):
+    import pickle
+    path = '{}/mo_coeff.npy'.format(dirname)
+    if os.path.exists(path):
+        return numpy.load(path)
+    path = '{}/mo_coeff.pkl'.format(dirname)
+    if os.path.exists(path):
+        with open(path, 'rb') as f: return pickle.load(f)
+    assert 0, "File containing MO coefficients not found"
+
+
 '''
 import sys
 sys.path.append('/scratch/scratch/mmm0043/work/pyscf_dev')
